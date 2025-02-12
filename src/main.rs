@@ -1,5 +1,5 @@
 use hidapi::HidApi;
-use hidpp::features::{DeviceInformation, Feature};
+use hidpp::features::{DeviceInformation, DeviceTypeAndName, Feature};
 
 fn main() {
     let api = HidApi::new().unwrap();
@@ -28,5 +28,14 @@ fn main() {
             let fw_info = dev_info.get_fw_info(i).unwrap();
             println!("{fw_info:?}");
         }
+
+        let name_type = DeviceTypeAndName::open(&mouse).unwrap().unwrap();
+        let len = name_type.get_device_name_count().unwrap();
+        let mut buf = String::new();
+        while buf.len() < len as usize {
+            buf += &*name_type.get_device_name(buf.len() as u8).unwrap();
+        }
+        println!("{buf:?}");
+        println!("{:?}", name_type.get_device_type());
     }
 }

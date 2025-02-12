@@ -29,6 +29,9 @@ pub use feature_set::FeatureSet;
 pub mod device_information;
 pub use device_information::DeviceInformation;
 
+pub mod device_type_and_name;
+pub use device_type_and_name::DeviceTypeAndName;
+
 use crate::{HidppDevice, Packet, Result, to_params::ToParams};
 
 pub trait Feature: Sized {
@@ -43,6 +46,7 @@ pub enum FeatureId {
     Root = 0x0000,
     FeatureSet = 0x0001,
     DeviceInformation = 0x0003,
+    DeviceTypeAndName = 0x0005,
 
     #[fallback]
     Other(u16),

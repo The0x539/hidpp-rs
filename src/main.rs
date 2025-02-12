@@ -1,5 +1,5 @@
 use hidapi::HidApi;
-use hidpp::features::{DeviceInformation, DeviceTypeAndName, Feature};
+use hidpp::features::{DeviceFriendlyName, DeviceInformation, DeviceTypeAndName, Feature};
 
 fn main() {
     let api = HidApi::new().unwrap();
@@ -9,10 +9,10 @@ fn main() {
         let model = info.product_string().unwrap_or("(what?)");
         println!("{model}");
 
-        if !model.contains("Master") {
+        if !model.contains("POP") {
             continue;
         }
-        if foo < 2 {
+        if foo < 1 {
             foo += 1;
             continue;
         }
@@ -37,5 +37,13 @@ fn main() {
         }
         println!("{buf:?}");
         println!("{:?}", name_type.get_device_type());
+
+        let friendly = DeviceFriendlyName::open(&mouse).unwrap().unwrap();
+        let lens = friendly.get_friendly_name_len().unwrap();
+        buf.clear();
+        while buf.len() < lens.name_len as usize {
+            buf += &*friendly.get_friendly_name(buf.len() as u8).unwrap();
+        }
+        println!("{buf:?}");
     }
 }

@@ -25,6 +25,20 @@ impl<T: Encode + ?Sized> Encode for &T {
     }
 }
 
+impl<T: Encode> Encode for [T] {
+    fn encode(&self, buf: &mut Buf) {
+        for val in self {
+            val.encode(buf);
+        }
+    }
+}
+
+impl Encode for str {
+    fn encode(&self, buf: &mut Buf) {
+        buf.extend_from_slice(self.as_bytes());
+    }
+}
+
 pub trait Decode: Sized {
     fn decode(buf: &mut &[u8]) -> Self;
 }
@@ -61,7 +75,9 @@ impl<const N: usize> Decode for TinyAsciiStr<N> {
     fn decode(buf: &mut &[u8]) -> Self {
         let (head, tail) = buf.split_at(N);
         *buf = tail;
-        Self::try_from_raw(head.try_into().unwrap()).unwrap()
+        Self::try_from_raw(head.try_into().unwrap())
+            .inspect_err(|e| println!("{head:?}: {e}"))
+            .unwrap()
     }
 }
 
@@ -101,7 +117,7 @@ macro_rules! derive_decode {
         impl $crate::encode::Decode for $struct {
             fn decode(buf: &mut &[u8]) -> Self {
                 Self {
-                    $($field: Decode::decode(buf),)*
+                    $($field: $crate::encode::Decode::decode(buf),)*
                 }
             }
         }

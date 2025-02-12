@@ -32,6 +32,9 @@ pub use device_information::DeviceInformation;
 pub mod device_type_and_name;
 pub use device_type_and_name::DeviceTypeAndName;
 
+pub mod device_friendly_name;
+pub use device_friendly_name::DeviceFriendlyName;
+
 use crate::{HidppDevice, Result};
 
 pub trait Feature: Sized {
@@ -47,6 +50,7 @@ pub enum FeatureId {
     FeatureSet = 0x0001,
     DeviceInformation = 0x0003,
     DeviceTypeAndName = 0x0005,
+    DeviceFriendlyName = 0x0007,
 
     #[fallback]
     Other(u16),

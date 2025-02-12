@@ -3,14 +3,16 @@ use std::sync::Arc;
 use bilge::prelude::*;
 use crossbeam::channel::{self as mpmc, TryRecvError};
 use deadpool::unmanaged::Pool;
+use encode::Encode;
 use features::FeatureId;
 use hidapi::HidDevice;
 use pollster::FutureExt;
-use to_params::ToParams;
+
+#[macro_use]
+pub mod encode;
 
 mod feature_lookup;
 pub mod features;
-pub mod to_params;
 
 use feature_lookup::FeatureLookup;
 use tinyvec::{ArrayVec, array_vec};
@@ -74,7 +76,7 @@ impl HidppDevice {
         &self,
         feature_id: FeatureId,
         function_index: u4,
-        params: &dyn ToParams,
+        params: &dyn Encode,
     ) -> Result<Packet> {
         let feature_index = self.features.get_index(feature_id.into()).unwrap();
 

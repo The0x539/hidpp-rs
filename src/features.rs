@@ -32,7 +32,7 @@ pub use device_information::DeviceInformation;
 pub mod device_type_and_name;
 pub use device_type_and_name::DeviceTypeAndName;
 
-use crate::{HidppDevice, Packet, Result, to_params::ToParams};
+use crate::{HidppDevice, Result};
 
 pub trait Feature: Sized {
     const ID: FeatureId;
@@ -52,8 +52,5 @@ pub enum FeatureId {
     Other(u16),
 }
 
-impl ToParams for FeatureId {
-    fn encode(&self, buf: &mut Packet) {
-        u16::from(*self).encode(buf)
-    }
-}
+encode_to_primitive!(FeatureId as u16);
+decode_from_primitive!(FeatureId as u16);

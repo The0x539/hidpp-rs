@@ -1,7 +1,7 @@
 use bilge::prelude::u4;
 
 use super::{Feature, FeatureId, root::FeatureType};
-use crate::Result;
+use crate::{Result, encode::Decode};
 
 feature!(FeatureSet);
 
@@ -12,6 +12,8 @@ pub struct FeatureDescriptor {
     pub version: u8,
 }
 
+derive_decode!(FeatureDescriptor, id, tags, version);
+
 impl FeatureSet {
     pub fn get_count(&self) -> Result<u8> {
         let response = self.0.request(Self::ID, u4::new(0), &())?;
@@ -20,16 +22,8 @@ impl FeatureSet {
 
     pub fn get_feature_id(&self, feature_index: u8) -> Result<FeatureDescriptor> {
         let response = self.0.request(Self::ID, u4::new(1), &feature_index)?;
-        let feature_id = u16::from_be_bytes([response[4], response[5]]).into();
-
-        self.0.features.insert(feature_index, feature_id);
-
-        let descriptor = FeatureDescriptor {
-            id: feature_id.into(),
-            tags: response[6].into(),
-            version: response[7],
-        };
-
+        let descriptor = FeatureDescriptor::decode(&mut &response[4..]);
+        self.0.features.insert(feature_index, descriptor.id.into());
         Ok(descriptor)
     }
 }

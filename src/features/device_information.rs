@@ -2,10 +2,10 @@ use std::ops::{AddAssign, BitAnd, MulAssign, ShrAssign};
 
 use bilge::prelude::*;
 use tinystr::TinyAsciiStr;
-use tinyvec::{ArrayVec, array_vec};
+use tinyvec::ArrayVec;
 
 use super::Feature;
-use crate::Result;
+use crate::{Result, encode::Decode};
 
 feature!(DeviceInformation);
 
@@ -19,6 +19,27 @@ pub struct DeviceInfo {
     pub capabilities: Capabilities,
 }
 
+impl Decode for DeviceInfo {
+    fn decode(buf: &mut &[u8]) -> Self {
+        let (entity_cnt, unit_id) = Decode::decode(buf);
+
+        let transports: Transports = Decode::decode(buf);
+        let len = transports.value.count_ones() as usize;
+        let model_ids = ArrayVec::from_array_len(Decode::decode(buf), len);
+
+        assert!(model_ids.grab_spare_slice().iter().all(|n| *n == 0));
+
+        Self {
+            entity_cnt,
+            unit_id,
+            transports,
+            model_ids,
+            extended_model_id: Decode::decode(buf),
+            capabilities: Decode::decode(buf),
+        }
+    }
+}
+
 #[bitsize(16)]
 #[derive(FromBits, DebugBits, Copy, Clone)]
 pub struct Transports {
@@ -29,12 +50,16 @@ pub struct Transports {
     reserved: u12,
 }
 
+decode_from_primitive!(Transports as u16);
+
 #[bitsize(8)]
 #[derive(FromBits, DebugBits, Copy, Clone)]
 pub struct Capabilities {
     pub serial_number: bool,
     reserved: u7,
 }
+
+decode_from_primitive!(Capabilities as u8);
 
 #[repr(u8)]
 #[bitsize(8)]
@@ -55,6 +80,8 @@ pub enum EntityType {
     Other(u8),
 }
 
+decode_from_primitive!(EntityType as u8);
+
 #[derive(Debug, Copy, Clone)]
 pub struct FirmwareInfo {
     pub entity_type: EntityType,
@@ -66,63 +93,43 @@ pub struct FirmwareInfo {
     pub extra_ver: [u8; 5],
 }
 
+impl Decode for FirmwareInfo {
+    fn decode(buf: &mut &[u8]) -> Self {
+        let entity_type = Decode::decode(buf);
+        Self {
+            entity_type,
+            fw_name: (Decode::decode(buf), bcd(Decode::decode(buf))),
+            revision: Decode::decode(buf),
+            build: {
+                let mut build = Decode::decode(buf);
+                if entity_type != EntityType::SoftDevice {
+                    build = bcd(build);
+                }
+                build
+            },
+            active: Decode::decode(buf),
+            tr_pid: Decode::decode(buf),
+            extra_ver: Decode::decode(buf),
+        }
+    }
+}
+
 impl DeviceInformation {
     pub fn get_device_info(&self) -> Result<DeviceInfo> {
         let response = self.0.request(Self::ID, u4::new(0), &())?;
-
-        let transports: Transports = u16::from_be_bytes([response[9], response[10]]).into();
-
-        let mut model_ids = array_vec!([u16; 3]);
-        for i in 0..3 {
-            let start = 11 + 2 * i as usize;
-            let model_id = u16::from_be_bytes(response[start..start + 2].try_into().unwrap());
-            if i < transports.value.count_ones() {
-                model_ids.push(model_id);
-            } else {
-                assert_eq!(model_id, 0);
-            }
-        }
-
-        let info = DeviceInfo {
-            entity_cnt: response[4],
-            unit_id: response[5..9].try_into().unwrap(),
-            transports,
-            model_ids,
-            extended_model_id: response[17],
-            capabilities: response[18].into(),
-        };
+        let info = DeviceInfo::decode(&mut &response[4..]);
         Ok(info)
     }
 
     pub fn get_fw_info(&self, entity_idx: u8) -> Result<FirmwareInfo> {
         let response = self.0.request(Self::ID, u4::new(1), &entity_idx)?;
-
-        let entity_type = response[4].into();
-
-        let mut build = u16::from_be_bytes([response[10], response[11]]);
-        if entity_type != EntityType::SoftDevice {
-            build = bcd(build);
-        }
-
-        let info = FirmwareInfo {
-            entity_type,
-            fw_name: (
-                TinyAsciiStr::try_from_raw(response[5..8].try_into().unwrap()).unwrap(),
-                bcd(response[8]),
-            ),
-            revision: response[9],
-            build,
-            active: response[12] != 0,
-            tr_pid: u16::from_be_bytes([response[13], response[14]]),
-            extra_ver: response[15..=19].try_into().unwrap(),
-        };
+        let info = FirmwareInfo::decode(&mut &response[4..]);
         Ok(info)
     }
 
     pub fn get_device_serial_number(&self) -> Result<TinyAsciiStr<12>> {
         let response = self.0.request(Self::ID, u4::new(2), &())?;
-        let payload = response[4..][..12].try_into().unwrap();
-        Ok(TinyAsciiStr::try_from_raw(payload).unwrap())
+        Ok(TinyAsciiStr::decode(&mut &response[4..16]))
     }
 }
 

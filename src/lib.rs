@@ -5,8 +5,9 @@ use crossbeam::channel::{self as mpmc, TryRecvError};
 use deadpool::unmanaged::Pool;
 use encode::Encode;
 use features::FeatureId;
-use hidapi::HidDevice;
+use hidapi::{HidDevice, HidError};
 use pollster::FutureExt;
+use thiserror::Error;
 
 #[macro_use]
 pub mod encode;
@@ -22,16 +23,19 @@ pub struct HidppDevice {
     device_index: u8,
     features: Arc<FeatureLookup>,
     to_device_tx: mpmc::Sender<Packet>,
-    from_device_rx: mpmc::Receiver<Packet>,
+    from_device_rx: mpmc::Receiver<Result<Packet, HidError>>,
     // TODO: write my own basic pool for this very basic usage
     swid_pool: Pool<u8>,
 }
 
 type Packet = ArrayVec<[u8; 20]>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Error)]
 pub enum HidppError {
+    #[error("HID++ error: {0:?}")]
     Protocol(ProtocolError),
+    #[error("hidapi error: {0}")]
+    Hidapi(#[from] HidError),
 }
 
 #[repr(u8)]
@@ -88,7 +92,8 @@ impl HidppDevice {
 
         let rx = self.from_device_rx.clone();
         self.to_device_tx.send(request).unwrap();
-        for packet in rx.iter() {
+        for packet_result in rx.iter() {
+            let packet = packet_result?;
             if packet[..4] == request[..4] {
                 return Ok(packet);
             } else if packet[2] == 0xFF {
@@ -116,17 +121,17 @@ impl HidppDevice {
 fn receive_packets(
     hid: HidDevice,
     to_device_rx: mpmc::Receiver<Packet>,
-    from_device_tx: mpmc::Sender<Packet>,
-) -> Result<(), hidapi::HidError> {
-    // TODO: figure out exactly what to actually do with HID errors.
-    // What if callers want to know that the device got disconnected?
-
+    from_device_tx: mpmc::Sender<Result<Packet, HidError>>,
+) {
     let mut buf = array_vec![0; 20];
 
     loop {
         match to_device_rx.try_recv() {
             Ok(msg) => {
-                hid.write(&msg)?;
+                if let Err(e) = hid.write(&msg) {
+                    _ = from_device_tx.send(Err(e));
+                    continue;
+                }
             }
             Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => break,
@@ -144,12 +149,10 @@ fn receive_packets(
         };
         if len > 0 {
             buf.truncate(len);
-            if let Err(e) = from_device_tx.send(buf) {
-                eprintln!("{e}");
+            if let Err(e) = from_device_tx.send(Ok(buf)) {
+                eprintln!("could not send response: {e}");
                 break;
             }
         }
     }
-
-    Ok(())
 }
